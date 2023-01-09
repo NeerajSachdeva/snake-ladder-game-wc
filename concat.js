@@ -9,5 +9,5 @@ const concat = require('concat');
   ];
 
   await fs.ensureDir('publish');
-  await concat(files, 'publish/sl-game-wc.js');
+  await concat(files, 'public/sl-game-wc.js');
 })();
