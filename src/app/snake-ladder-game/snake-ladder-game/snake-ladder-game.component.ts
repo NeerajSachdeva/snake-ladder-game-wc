@@ -1,4 +1,5 @@
 import { AfterViewInit, Component, OnInit } from '@angular/core';
+import gsap from 'gsap';
 
 @Component({
   selector: 'app-snake-ladder-game',
@@ -6,317 +7,245 @@ import { AfterViewInit, Component, OnInit } from '@angular/core';
   styleUrls: ['./snake-ladder-game.component.scss']
 })
 export class SnakeLadderGameComponent implements OnInit, AfterViewInit {
+  wrapper: any;
+  resetGameBtn: any;
+  diceDisplay: any;
+  playerDisplay: any;
+  message: any;
   canvas: any;
-  // -----------------------------
-  // 	SFX & Music
-  // -----------------------------
-  // sfx from: https://github.com/KilledByAPixel/ZzFX
-  // music from: https://www.fesliyanstudios.com/
-  sfx = [, , 925, .04, .3, .6, 1, .3, , 6.27, -184, .09, .17];
-  audio = new Audio('https://assets.codepen.io/539557/2019-12-11_-_Retro_Platforming_-_David_Fesliyan.mp3');
-
-  // -----------------------------
-  // 	Config
-  // -----------------------------
-  keys: any = {};
-  r = 190;
-  score: any;
-  highscore: any;
-  collision = false;
-  gameDur = 60000; // 1 min
-  pi_600_decimals =
-    "141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117067982148086513282306647093844609550582231725359408128481117450284102701938521105559644622948954930381964428810975665933446128475648233786783165271201909145648566923460348610454326648213393607260249141273724587006606315588174881520920962829254091715364367892590360011330530548820466521384146951941511609433057270365759591953092186117381932611793105118548074462379962749567351885752724891227938183011949129833673362440656643086021394946395224737190702179860943702770539217176293176752384674818467669405132";
-
-  // -----------------------------
-  //		Character
-  // -----------------------------
-  piGuy = {
-    x: 190, // initial x pos
-    y: 100, // initial y pos
-    w: 30, // width
-    h: 30, // height
-    velY: 0, // velocity X
-    velX: 0, // velocity Y
-    speed: 2, // Speed multiplier
-    friction: 0.75
-  };
-  dialog: any;
-  scoreSpan: any;
-  resetBtn: any;
-  startBtn: any;
-  detector: any;
   ctx: any;
 
-  ngOnInit(): void {
-    this.audio.volume = 0.1;
-    this.audio.loop = true;
-    this.audio.oncanplaythrough = <any>this.audio.play();
+  height = 500;
+  width = 500;
+  gridSize = 50;
+  gridMid = 25;
+  walking: any;
+  walkSpeed = 450;
+  locked = false;
+  slideSpeed = .5;
+  rolled: number | string = '';
+  rolling: any;
+  rollCount: any;
+  rollMax: any;
+  rollSpeed = 85;
+  activePlayer: any;
 
-    // -----------------------------
-    // 	Detector
-    // -----------------------------
-    this.detector = {
-      ang: 90,
-      arc: 30,
-      s: this.degreesToRad(90 - 30 / 2),
-      e: this.degreesToRad(90 + 30 / 2)
-    };
+  player1 = { current: 0, target: 0, x: 0, y: 0, colour: '#f36d', id: 'You' };
+  player2 = { current: 0, target: 0, x: 0, y: 0, colour: '#8a2d', id: 'AutoBot' };
+
+  obstacles = [
+    { type: 'snake', start: 97, end: 78 },
+    { type: 'snake', start: 95, end: 56 },
+    { type: 'snake', start: 88, end: 24 },
+    { type: 'snake', start: 62, end: 18 },
+    { type: 'snake', start: 48, end: 26 },
+    { type: 'snake', start: 36, end: 6 },
+    { type: 'snake', start: 32, end: 10 },
+    { type: 'ladder', start: 1, end: 38 },
+    { type: 'ladder', start: 4, end: 14 },
+    { type: 'ladder', start: 8, end: 30 },
+    { type: 'ladder', start: 21, end: 42 },
+    { type: 'ladder', start: 28, end: 76 },
+    { type: 'ladder', start: 50, end: 67 },
+    { type: 'ladder', start: 71, end: 92 },
+    { type: 'ladder', start: 80, end: 99 }
+  ];
+
+  ngOnInit(): void {
+    this.activePlayer = this.player1;
   }
 
   ngAfterViewInit(): void {
-    this.dialog = document.getElementById('dialog');
-    this.scoreSpan = document.getElementById('score');
-    this.resetBtn = document.getElementById('reset');
-    this.startBtn = document.getElementById('start');
+    this.wrapper = document.querySelector('.wrapper');
+    this.resetGameBtn = document.querySelector('#reset');
+    this.diceDisplay = document.querySelector('#diceThrow');
+    this.playerDisplay = document.querySelector('.playerName');
+    this.message = document.querySelector('.message');
 
-    this.canvas = <HTMLCanvasElement>document.querySelector('canvas');
+    this.canvas = document.querySelector('canvas');
     this.ctx = this.canvas.getContext('2d');
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+    this.ctx.strokeStyle = '#555';
+    this.ctx.lineWidth = 2;
+    this.wrapper.style.width = `${this.width}px`;
 
-    this.canvas.width = this.canvas.height = 400;
+    this.diceDisplay.addEventListener('click', this.rollDice);
+    this.resetGameBtn.addEventListener('click', this.resetGame);
 
-    // -----------------------------
-    // 	Events
-    // -----------------------------
-    const self = this;
-    document.addEventListener('keydown', function (e) {
-      if (e.key.match(/(Arrow)/gi)) {
-        e.preventDefault();
-        self.keys[e.key] = true;
-      }
-    });
-    document.addEventListener('keyup', function (e) {
-      if (e.key.match(/(Arrow)/gi)) {
-        e.preventDefault();
-        self.keys[e.key] = false;
-      }
-    });
-    document.getElementById('start')?.addEventListener('click', function (e: any) {
-      e.target.classList.add('hide');
-      self.play(self.gameDur);
-    });
-    document.getElementById('mute')?.addEventListener('change', function (e: any) {
-      self.audio.muted = !self.audio.muted;
-    });
+    this.setPlayerID();
   }
 
-  degreesToRad = (ang: number) => ang * (Math.PI / 180);
-  // -----------------------------
-  // 	Update
-  // -----------------------------
+  setLocked = (tf: any) => {
+    this.locked = tf;
+  }
 
-  update(dt: any) {
-    // movement	
-    if (this.keys.ArrowUp) {
-      if (this.piGuy.velY > - this.piGuy.speed) {
-        this.piGuy.velY--;
+  boustrophedonWalk = (cols: number, rows: number) => {
+    let temp: any[] = [];
+    for(let row=0; row<rows; row++){
+      let t = Array.apply(null, Array(cols)).map((x, col) => {
+        return {id:col+row*cols, y:this.height - this.gridSize - row*this.gridSize, x:col*this.gridSize};
+      });
+      t = row % 2 ? t.reverse() : t;
+      temp = [...temp, ...t];
+    }
+    return temp;
+  }
+  
+  drawPlayers = () => {
+    this.ctx.clearRect(0, 0, this.width, this.height);
+    if(this.player1.current > 0) {
+      this.ctx.fillStyle = this.player1.colour;
+      this.ctx.beginPath();
+      this.ctx.arc(this.player1.x+this.gridMid, this.player1.y+this.gridMid, 16, 0, 2 * Math.PI);
+      this.ctx.fill();
+      this.ctx.stroke();
+    }
+    if(this.player2.current > 0) {
+      this.ctx.fillStyle = this.player2.colour;
+      this.ctx.beginPath();
+      if(this.player2.current === this.player1.current){
+        this.ctx.arc(this.player2.x+this.gridMid, this.player2.y+this.gridMid, 16, 45, Math.PI + 45);
+      } 
+      else {
+        this.ctx.arc(this.player2.x+this.gridMid, this.player2.y+this.gridMid, 16, 0, 2 * Math.PI);
       }
+      this.ctx.fill();
+      this.ctx.stroke();
     }
-    if (this.keys.ArrowDown) {
-      if (this.piGuy.velY < this.piGuy.speed) {
-        this.piGuy.velY++;
-      }
-    }
-    if (this.keys.ArrowRight) {
-      if (this.piGuy.velX < this.piGuy.speed) {
-        this.piGuy.velX++;
-      }
-    }
-    if (this.keys.ArrowLeft) {
-      if (this.piGuy.velX > - this.piGuy.speed) {
-        this.piGuy.velX--;
-      }
-    }
-    // piGuy Velocity
-    this.piGuy.velY *= this.piGuy.friction;
-    this.piGuy.velX *= this.piGuy.friction;
-    // vectors of piGuy
-    const v: [[number, number], [number, number], [number, number], [number, number]] = [
-      [this.piGuy.x, this.piGuy.y], // top left 
-      [this.piGuy.x + this.piGuy.w, this.piGuy.y], // top right
-      [this.piGuy.x + this.piGuy.w, this.piGuy.y + this.piGuy.h], // bottom right
-      [this.piGuy.x, this.piGuy.y + this.piGuy.h] // bottom left
-    ];
-    // Move piGuy within bounds
-    if (this.piGuy.velX < 0 && this.inCircle(...v[0]) && this.inCircle(...v[3])) {
-      this.piGuy.x += this.piGuy.velX;
-    } else if (this.piGuy.velX > 0 && this.inCircle(...v[1]) && this.inCircle(...v[2])) {
-      this.piGuy.x += this.piGuy.velX;
-    }
-    if (this.piGuy.velY < 0 && this.inCircle(...v[0]) && this.inCircle(...v[1])) {
-      this.piGuy.y += this.piGuy.velY;
-    } else if (this.piGuy.velY > 0 && this.inCircle(...v[2]) && this.inCircle(...v[3])) {
-      this.piGuy.y += this.piGuy.velY;
-    }
-    // Detector position
-    this.detector.s = this.degreesToRad(this.detector.ang - this.detector.arc / 2);
-    this.detector.e = this.degreesToRad(this.detector.ang + this.detector.arc / 2);
-    // Detector Size 	
-    this.detector.arc = 30 + (330 * dt);
-    // direction & speed
-    if (dt < 0.33) {
-      this.detector.ang += 1;
-    } else if (dt < 0.66) {
-      this.detector.ang -= 1.2;
-      this.piGuy.speed = 2.2;
-    } else if (dt < 1) {
-      this.detector.ang += 1.4;
-      this.piGuy.speed = 2.4;
-    }
-
-    // draw 	
-    this.draw();
-    // collision detection
-    let arcPoints: [[number, number, number, number], [number, number, number, number]] = [
-      [200, 200, Math.cos(this.detector.s) * this.r + 200, Math.sin(this.detector.s) * this.r + 200],
-      [200, 200, Math.cos(this.detector.e) * this.r + 200, Math.sin(this.detector.e) * this.r + 200],
-    ];
-    this.collision = this.detectCollision(v, arcPoints);
-    this.collision && this.GAME_OVER();
   }
-
-  // -----------------------------
-  // 	Draw
-  // -----------------------------
-
-  draw() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    // Arena
-    this.ctx.beginPath();
-    this.ctx.arc(200, 200, 190, 0, 2 * Math.PI);
-    this.ctx.strokeStyle = '#461877';
-    this.ctx.lineWidth = 6;
-    this.ctx.fillStyle = '#321155';
-    this.ctx.fill();
-    this.ctx.stroke();
-    // Detector
-    this.ctx.beginPath();
-    this.ctx.moveTo(200, 200);
-    this.ctx.arc(200, 200, 187, this.detector.s, this.detector.e);
-    this.ctx.lineTo(200, 200);
-    this.ctx.fillStyle = '#EF476F';
-    this.ctx.fill();
-    // PI Guy
-    this.ctx.beginPath();
-    this.ctx.rect(this.piGuy.x, this.piGuy.y, 30, 10);
-    this.ctx.rect(this.piGuy.x + 4, this.piGuy.y + 10, 8, 20);
-    this.ctx.rect(this.piGuy.x + 18, this.piGuy.y + 10, 8, 16);
-    this.ctx.rect(this.piGuy.x + 22, this.piGuy.y + 22, 8, 8);
-    this.ctx.fillStyle = '#fcc74c';
-    this.ctx.fill();
-  }
-
-  // -----------------------------
-  // 	Play
-  // -----------------------------
-
-  play(duration: number) {
-    let start = performance.now();
-    let secs = '-0';
-    let i = 1;
-    const self = this;
-    requestAnimationFrame(function play(time) {
-      let ms = time - start;
-      let progress = ms / duration;
-      if (progress > 1) progress = 1;
-      // keeping score
-      if (secs !== (ms / 1000).toFixed(0)) {
-        secs = (ms / 1000).toFixed(0);
-        i += Number.parseInt(secs) / 3;
-        self.score = i;
-      }
-      // update
-      self.update(progress);
-      // step		
-      if (progress < 1 && !self.collision) requestAnimationFrame(play);
-    });
-  }
-
-  // -----------------------------
-  // 	Reset
-  // -----------------------------
-
-  resetScene() {
-    this.score = 0;
-    this.collision = false;
-    this.piGuy.x = 190;
-    this.piGuy.y = 100;
-    this.piGuy.velX = 0;
-    this.piGuy.velY = 0;
-    this.piGuy.speed = 2;
-    this.detector.ang = 90;
-    this.detector.arc = 30;
-    this.detector.s = this.degreesToRad(90 - 30 / 2);
-    this.detector.e = this.degreesToRad(90 - 30 / 2);
-    this.draw();
-  }
-  // init
-  // resetScene();
-
-  // -----------------------------
-  // 	Game over
-  // -----------------------------
-
-  GAME_OVER() {
-    if (this.score > this.highscore || this.highscore === undefined) {
-      this.dialog.classList.add('ishighscore');
-      this.highscore = this.score;
+  
+  walk = () => {
+    let activeCounter = this.activePlayer.current++;
+    let sliding = false;
+    this.activePlayer.x = this.walkSequence[activeCounter].x;
+    this.activePlayer.y = this.walkSequence[activeCounter].y;
+    this.drawPlayers();
+    
+    if(activeCounter === 99){
+      clearInterval(this.walking);
+      this.showWinner();
+      return;
     }
-    // !this.audio.muted && zzfx(...this.sfx);
-    this.scoreSpan.textContent = `3.${this.pi_600_decimals.substr(0, this.score)}`;
-    setTimeout(() => {
-      this.dialog.showModal();
-    }, 250);
-    this.resetBtn.addEventListener('click', (e: any) => {
-      this.dialog.close();
-      this.resetScene();
-      this.startBtn.classList.remove('hide');
-      this.dialog.classList.remove('ishighscore');
-    });
-  }
-
-  // -----------------------------
-  // 	Collision detection
-  // -----------------------------
-  inCircle(x1: number, y1: number, x0 = 200, y0 = 200, r = 190) {
-    // test coordinates (x1,y1), center of circle (x0,y0), radius (r)
-    return Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) < r;
-  }
-
-  detectCollision(c: [[number, number], [number, number], [number, number], [number, number]],
-    a: [[number, number, number, number], [number, number, number, number]]) {
-    // check each character line against both arc lines
-    for (let i = 0; i < c.length; i += 2) {
-      for (let j = c.length - 1; j > 0; j -= 2) {
-        if (this.intersect(...c[i], ...c[j], ...a[0]) ||
-          this.intersect(...c[i], ...c[j], ...a[1])) {
-          return true;
+    
+    if(this.activePlayer.current >= this.activePlayer.target){
+      clearInterval(this.walking);
+      
+      // check obstacles
+      for(let i=0; i < this.obstacles.length; i++){
+        if(this.obstacles[i].start === this.activePlayer.target){
+          let endSquare = this.obstacles[i].end;
+          this.activePlayer.target = this.obstacles[i].end;
+          sliding = true;
+          this.slide(this.activePlayer, this.walkSequence[endSquare-1].x, this.walkSequence[endSquare-1].y, this.slideSpeed);
+          break;
         }
       }
+      if(!sliding){
+        this.resetTurn();
+        this.togglePlayer();
+      }
     }
-    return false;
+  }
+  
+  showWinner = () => {
+    this.setPlayerID('is the winner!');
+    this.resetGameBtn.classList.remove('hidden');
+  }
+  
+  setPlayerID = (msg='') => {
+    this.playerDisplay.innerHTML = `${this.activePlayer.id} ${msg}`;
+    this.message.innerHTML = "Click dice to play";
+    document.body.classList.value = '';
+    document.body.classList.add(`player${this.activePlayer.id}`);
+  }
+  
+  resetTurn = () => {
+    this.setLocked(false);
+  }
+  
+  slide = (element: any, dX: any, dY: any, dur=1) => {
+    gsap.to(element, {x:dX, y:dY, duration:dur, delay: 0.25, onUpdate:this.doOnUpdate, onComplete:this.doOnComplete});
+  }
+  doOnUpdate = () => {
+    this.drawPlayers();
+  }
+  doOnComplete = () => {
+    this.activePlayer.current = this.activePlayer.target;
+    this.drawPlayers();
+    this.resetTurn();
+    this.togglePlayer();
+  }
+  
+  togglePlayer = () => {
+    this.activePlayer = this.activePlayer.id === this.player1.id ? this.player2 : this.player1;
+    this.setPlayerID();
+    
+    if(this.activePlayer === this.player2){
+      this.rollDice();
+    }
+  }
+  
+  rollDice = (evt?: { preventDefault: () => void; }) => {
+    if(evt) evt.preventDefault();
+    if (this.locked) return;
+    this.setLocked(true);
+    
+    this.message.innerHTML = this.activePlayer === this.player1 ? "Rolling..." : 'Auto rolling...';
+    
+    this.rollCount = 0;
+    this.rollMax = Math.random()*10 + 15;
+    this.rolling = setInterval(this.doRoll, this.rollSpeed);
+  }
+  
+  doRoll = () => {
+    this.rolled = Math.floor(Math.random() * 6 + 1);
+    this.diceRollDisplay(this.rolled);
+    if(this.rollCount++ >= this.rollMax){
+      clearInterval(this.rolling);
+      this.message.innerHTML = "Moving...";
+      this.activePlayer.target += this.rolled;
+      this.walking = setInterval(this.walk, this.walkSpeed);
+    }
+  }
+  
+  diceRollDisplay = (spots: any) => {
+    this.diceDisplay.classList = `s${spots}`
+  }
+  
+  resetGame = () => {
+    this.player1.current = 0;
+    this.player1.target = 0;
+    this.player1.x = 0;
+    this.player1.y = 0;
+    this.player2.current = 0;
+    this.player2.target = 0;
+    this.player2.x = 0;
+    this.player2.y = 0;
+    this.activePlayer = this.player1;
+    this.locked = false;
+    this.diceRollDisplay('');
+    this.setPlayerID();
+    
+    this.drawPlayers();
+    
+    this.resetGameBtn.classList.add('hidden');
+  }
+  
+  walkSequence = this.boustrophedonWalk(10, 10);
+  
+  // Test method to show obstacles
+  drawObstacles = () => {
+    this.ctx.clearRect(0, 0, this.width, this.height);
+    for(let i=0; i < this.obstacles.length; i++){
+      let ob = this.obstacles[i];
+      this.ctx.strokeStyle = ob.type === 'snake' ? '#d00' : '#0d0';
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.walkSequence[ob.start-1].x+this.gridSize*.5, this.walkSequence[ob.start-1].y+this.gridSize*.5);
+      this.ctx.lineTo(this.walkSequence[ob.end-1].x+this.gridSize*.5, this.walkSequence[ob.end-1].y+this.gridSize*.5);
+      this.ctx.stroke();
+      this.ctx.closePath();
+    }
   }
 
-  // Source: Paul Bourke
-  // http://paulbourke.net/geometry/pointlineplane/
-  intersect(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, x4: number, y4: number) {
-    // Check if none of the lines are of length 0
-    if ((x1 === x2 && y1 === y2) || (x3 === x4 && y3 === y4)) {
-      return false
-    }
-    const denominator = ((y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1))
-    // Lines are parallel
-    if (denominator === 0) {
-      return false
-    }
-    let ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denominator
-    let ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denominator
-    // is the intersection along the segments
-    if (ua < 0 || ua > 1 || ub < 0 || ub > 1) {
-      return false
-    }
-    // Return a object with the x and y coordinates of the intersection
-    let x = x1 + ua * (x2 - x1)
-    let y = y1 + ua * (y2 - y1)
-    return { x, y }
-  }
 }
